@@ -30,6 +30,12 @@ export default function ProfilePage() {
   const [fatTarget, setFatTarget] = useState(65);
   const [message, setMessage] = useState<string | null>(null);
 
+  // VIP Promo state
+  const [showPromo, setShowPromo] = useState(false);
+  const [promoCode, setPromoCode] = useState('');
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoMessage, setPromoMessage] = useState<string | null>(null);
+
   const supabase = createClient();
 
   useEffect(() => {
@@ -143,6 +149,43 @@ export default function ProfilePage() {
     }
   };
 
+  const handleRedeemPromo = async () => {
+    if (!promoCode.trim()) return;
+    try {
+      setPromoLoading(true);
+      setPromoMessage(null);
+
+      const res = await fetch('/api/redeem-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: promoCode.trim() }),
+      });
+
+      const data = await res.json();
+
+      if (res.status === 401 && data.error === 'AUTH_REQUIRED') {
+        const VALID_PROMO_CODES = ['VIP2026', 'PROTEST', 'NUTRIFRIEND', 'BETA2026', 'ARTECH'];
+        if (VALID_PROMO_CODES.includes(promoCode.trim().toUpperCase())) {
+          localStorage.setItem('nutrisnap_guest_is_pro', 'true');
+          setPromoMessage('🎉 VIP mode unlocked for guest! Unlimited scans active.');
+          setTimeout(() => window.location.reload(), 1200);
+          return;
+        }
+      }
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to activate VIP code.');
+      }
+
+      setPromoMessage('🎉 NutriSnap Pro VIP activated! Unlimited scans unlocked.');
+      setTimeout(() => window.location.reload(), 1200);
+    } catch (err: any) {
+      setPromoMessage(`❌ ${err?.message || 'Error activating code'}`);
+    } finally {
+      setPromoLoading(false);
+    }
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push('/login');
@@ -197,13 +240,56 @@ export default function ProfilePage() {
             <span>Manage Subscription (Polar Portal)</span>
           </button>
         ) : (
-          <button
-            onClick={() => setShowPaywall(true)}
-            className="w-full mt-2 flex items-center justify-center gap-2 py-3 px-4 rounded-2xl bg-gradient-to-r from-amber-500 via-emerald-500 to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-500/20 active:scale-[0.98] transition-all"
-          >
-            <Sparkles className="w-4 h-4" />
-            Upgrade to Pro ($9.99/mo)
-          </button>
+          <div className="space-y-2 mt-2">
+            <button
+              onClick={() => setShowPaywall(true)}
+              className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-2xl bg-gradient-to-r from-amber-500 via-emerald-500 to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-500/20 active:scale-[0.98] transition-all"
+            >
+              <Sparkles className="w-4 h-4" />
+              Upgrade to Pro ($9.99/mo)
+            </button>
+
+            {/* VIP Tester Redeem Button / Drawer */}
+            <div className="pt-2 border-t border-slate-800/80 text-center">
+              {!showPromo ? (
+                <button
+                  type="button"
+                  onClick={() => setShowPromo(true)}
+                  className="text-[11px] text-amber-400 hover:text-amber-300 font-medium underline underline-offset-4 transition"
+                >
+                  Have a VIP Tester Code?
+                </button>
+              ) : (
+                <div className="space-y-2 text-left pt-1">
+                  <span className="text-[10px] text-slate-400 font-medium block">
+                    Enter tester code to unlock unlimited access:
+                  </span>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="e.g. VIP2026"
+                      value={promoCode}
+                      onChange={(e) => setPromoCode(e.target.value)}
+                      className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white uppercase placeholder-slate-600 focus:outline-none focus:border-amber-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleRedeemPromo}
+                      disabled={promoLoading || !promoCode.trim()}
+                      className="px-3 py-1.5 bg-amber-500 text-slate-950 font-bold text-xs rounded-xl disabled:opacity-50"
+                    >
+                      {promoLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Apply'}
+                    </button>
+                  </div>
+                  {promoMessage && (
+                    <p className="text-[11px] font-medium text-emerald-400 mt-1">
+                      {promoMessage}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </div>
 

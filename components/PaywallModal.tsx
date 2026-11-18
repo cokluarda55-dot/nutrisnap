@@ -11,6 +11,10 @@ interface PaywallModalProps {
 export default function PaywallModal({ isOpen, onClose }: PaywallModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPromoInput, setShowPromoInput] = useState(false);
+  const [promoCode, setPromoCode] = useState('');
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoSuccess, setPromoSuccess] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -21,6 +25,52 @@ export default function PaywallModal({ isOpen, onClose }: PaywallModalProps) {
     'Complete nutrition history and timeline logs',
     'Ad-free, ultra-fast mobile PWA experience',
   ];
+
+  const handleRedeemPromo = async () => {
+    if (!promoCode.trim()) return;
+    try {
+      setPromoLoading(true);
+      setError(null);
+      setPromoSuccess(null);
+
+      const res = await fetch('/api/redeem-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: promoCode.trim() }),
+      });
+
+      const data = await res.json();
+
+      if (res.status === 401 && data.error === 'AUTH_REQUIRED') {
+        // If guest, activate local VIP flag immediately so they can keep testing
+        const VALID_PROMO_CODES = ['VIP2026', 'PROTEST', 'NUTRIFRIEND', 'BETA2026', 'ARTECH'];
+        if (VALID_PROMO_CODES.includes(promoCode.trim().toUpperCase())) {
+          localStorage.setItem('nutrisnap_guest_is_pro', 'true');
+          setPromoSuccess('🎉 VIP Tester mode activated! Unlimited scans unlocked.');
+          setTimeout(() => {
+            onClose();
+            window.location.reload();
+          }, 1200);
+          return;
+        }
+      }
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to activate VIP code.');
+      }
+
+      setPromoSuccess('🎉 NutriSnap Pro activated! Enjoy unlimited scans.');
+      setTimeout(() => {
+        onClose();
+        window.location.reload();
+      }, 1200);
+    } catch (err: any) {
+      console.error(err);
+      setError(err?.message || 'Error redeeming code.');
+    } finally {
+      setPromoLoading(false);
+    }
+  };
 
   const handleUpgrade = async () => {
     try {
@@ -102,7 +152,7 @@ export default function PaywallModal({ isOpen, onClose }: PaywallModalProps) {
         {/* Upgrade Button */}
         <button
           onClick={handleUpgrade}
-          disabled={loading}
+          disabled={loading || promoLoading}
           className="w-full flex items-center justify-center gap-2 py-3.5 px-5 rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 text-white font-semibold text-sm shadow-lg shadow-emerald-500/25 hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-70"
         >
           {loading ? (
@@ -117,6 +167,47 @@ export default function PaywallModal({ isOpen, onClose }: PaywallModalProps) {
             </>
           )}
         </button>
+
+        {/* Promo / VIP Code Box */}
+        <div className="mt-4 pt-4 border-t border-slate-800">
+          {!showPromoInput ? (
+            <button
+              type="button"
+              onClick={() => setShowPromoInput(true)}
+              className="text-xs text-amber-400 hover:text-amber-300 font-medium underline underline-offset-4 transition"
+            >
+              Have a VIP / Tester Code?
+            </button>
+          ) : (
+            <div className="space-y-2 animate-fade-in text-left">
+              <span className="text-[11px] text-slate-400 font-medium block">
+                Enter your VIP Tester code:
+              </span>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="e.g. VIP2026"
+                  value={promoCode}
+                  onChange={(e) => setPromoCode(e.target.value)}
+                  className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white uppercase placeholder-slate-600 focus:outline-none focus:border-amber-400"
+                />
+                <button
+                  type="button"
+                  onClick={handleRedeemPromo}
+                  disabled={promoLoading || !promoCode.trim()}
+                  className="px-3.5 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold text-xs rounded-xl disabled:opacity-50 flex items-center gap-1 shadow-md shadow-amber-500/20"
+                >
+                  {promoLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Activate'}
+                </button>
+              </div>
+              {promoSuccess && (
+                <p className="text-[11px] text-emerald-400 font-medium mt-1">
+                  {promoSuccess}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
 
         <p className="text-[10px] text-slate-500 mt-3">
           Global payments processed securely by Polar (Cards, Apple Pay, Google Pay).

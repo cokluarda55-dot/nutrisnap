@@ -33,6 +33,14 @@ export async function POST(req: NextRequest) {
       if (profile) {
         isPro = profile.is_pro;
         analysesCount = profile.analyses_count;
+      } else {
+        // Auto-create profile row so it immediately shows up in Supabase Table Editor
+        await adminSupabase.from('profiles').upsert({
+          id: user.id,
+          email: user.email,
+          is_pro: false,
+          analyses_count: 0,
+        });
       }
 
       // Check quota only for initial new scans, not when refining/correcting the current dish
@@ -60,11 +68,13 @@ export async function POST(req: NextRequest) {
     if (user && !isCorrection) {
       await adminSupabase
         .from('profiles')
-        .update({
+        .upsert({
+          id: user.id,
+          email: user.email,
           analyses_count: analysesCount + 1,
+          is_pro: isPro,
           updated_at: new Date().toISOString(),
-        })
-        .eq('id', user.id);
+        });
 
       analysesCount += 1;
     }
