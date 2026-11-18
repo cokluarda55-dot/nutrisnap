@@ -18,29 +18,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    try {
-      // Create Polar checkout session with snake_case parameters
-      const checkout = await polar.checkouts.create({
-        products: [productId],
-        success_url: `${appUrl}/?subscription=success`,
-        customer_email: user?.email || undefined,
-        external_customer_id: user?.id || undefined,
-        metadata: {
-          userId: user?.id || '',
-        },
-      });
+    // Build checkout payload dynamically, avoiding empty strings that trigger Polar 422
+    const checkoutPayload: any = {
+      products: [productId],
+      success_url: `${appUrl}/?subscription=success`,
+    };
 
-      return NextResponse.json({ url: checkout.url });
-    } catch (apiError: any) {
-      console.warn('Polar API checkout creation warning:', apiError?.message || apiError);
-      // Resilient fallback to direct Polar hosted checkout URL if token has limited scope
-      const fallbackUrl = `https://polar.sh/checkout?product_id=${productId}${
-        user?.email ? `&customer_email=${encodeURIComponent(user.email)}` : ''
-      }`;
-      return NextResponse.json({ url: fallbackUrl });
+    if (user?.email) {
+      checkoutPayload.customer_email = user.email;
     }
+
+    if (user?.id) {
+      checkoutPayload.external_customer_id = user.id;
+      checkoutPayload.metadata = {
+        userId: user.id,
+      };
+    }
+
+    const checkout = await polar.checkouts.create(checkoutPayload);
+
+    if (!checkout || !checkout.url) {
+      throw new Error('Polar did not return a valid checkout URL.');
+    }
+
+    return NextResponse.json({ url: checkout.url });
   } catch (error: any) {
-    console.error('Polar checkout error:', error);
+    console.error('Polar checkout creation error:', error);
     return NextResponse.json(
       { error: error?.message || 'Failed to initialize Polar checkout session.' },
       { status: 500 }
