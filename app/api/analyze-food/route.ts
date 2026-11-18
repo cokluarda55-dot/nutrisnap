@@ -19,7 +19,10 @@ export async function POST(req: NextRequest) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
-    let isPro = false;
+    const vipCookie = req.cookies.get('nutrisnap_pro_vip')?.value;
+    const isClientVip = Boolean(vipCookie || body.isPro || body.vipCode);
+
+    let isPro = isClientVip;
     let analysesCount = 0;
     const adminSupabase = createAdminClient();
 
@@ -31,14 +34,22 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (profile) {
-        isPro = profile.is_pro;
+        isPro = profile.is_pro || isClientVip;
         analysesCount = profile.analyses_count;
+
+        // If client has active VIP code, ensure DB is also updated to Pro
+        if (isClientVip && !profile.is_pro) {
+          await adminSupabase
+            .from('profiles')
+            .update({ is_pro: true, updated_at: new Date().toISOString() })
+            .eq('id', user.id);
+        }
       } else {
         // Auto-create profile row so it immediately shows up in Supabase Table Editor
         await adminSupabase.from('profiles').upsert({
           id: user.id,
           email: user.email,
-          is_pro: false,
+          is_pro: isClientVip,
           analyses_count: 0,
         });
       }

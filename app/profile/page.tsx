@@ -44,6 +44,11 @@ export default function ProfilePage() {
         setLoading(true);
         const { data: { user } } = await supabase.auth.getUser();
 
+        const isVip =
+          typeof window !== 'undefined' &&
+          (localStorage.getItem('nutrisnap_guest_is_pro') === 'true' ||
+            localStorage.getItem('nutrisnap_pro') === 'true');
+
         if (user) {
           const { data } = await supabase
             .from('profiles')
@@ -52,11 +57,25 @@ export default function ProfilePage() {
             .single();
 
           if (data) {
-            setProfile(data);
+            setProfile({
+              ...data,
+              is_pro: data.is_pro || isVip,
+            });
             setCalorieTarget(data.daily_calorie_target);
             setProteinTarget(data.daily_protein_target);
             setCarbsTarget(data.daily_carbs_target);
             setFatTarget(data.daily_fat_target);
+          } else {
+            setProfile({
+              id: user.id,
+              email: user.email || null,
+              daily_calorie_target: 2000,
+              daily_protein_target: 140,
+              daily_carbs_target: 220,
+              daily_fat_target: 65,
+              analyses_count: 0,
+              is_pro: isVip,
+            });
           }
         } else {
           // Guest mode
@@ -73,7 +92,7 @@ export default function ProfilePage() {
             daily_carbs_target: storedGoals.carbs,
             daily_fat_target: storedGoals.fat,
             analyses_count: localCount,
-            is_pro: false,
+            is_pro: isVip,
           });
           setCalorieTarget(storedGoals.calories);
           setProteinTarget(storedGoals.protein);
@@ -155,22 +174,19 @@ export default function ProfilePage() {
 
       const data = await res.json();
 
-      if (res.status === 401 && data.error === 'AUTH_REQUIRED') {
-        const VALID_PROMO_CODES = ['VIP2026', 'PROTEST', 'NUTRIFRIEND', 'BETA2026', 'ARTECH'];
-        if (VALID_PROMO_CODES.includes(promoCode.trim().toUpperCase())) {
-          localStorage.setItem('nutrisnap_guest_is_pro', 'true');
-          setPromoMessage('🎉 VIP mode unlocked for guest! Unlimited scans active.');
-          setTimeout(() => window.location.reload(), 1200);
-          return;
-        }
-      }
-
       if (!res.ok) {
         throw new Error(data.error || 'Failed to activate VIP code.');
       }
 
+      // Save pro state locally in all keys
+      localStorage.setItem('nutrisnap_guest_is_pro', 'true');
+      localStorage.setItem('nutrisnap_pro', 'true');
+
+      setProfile((prev) => (prev ? { ...prev, is_pro: true } : null));
+      window.dispatchEvent(new CustomEvent('nutrisnap_pro_updated', { detail: { is_pro: true } }));
+
       setPromoMessage('🎉 NutriSnap Pro VIP activated! Unlimited scans unlocked.');
-      setTimeout(() => window.location.reload(), 1200);
+      setTimeout(() => window.location.reload(), 600);
     } catch (err: any) {
       setPromoMessage(`❌ ${err?.message || 'Error activating code'}`);
     } finally {

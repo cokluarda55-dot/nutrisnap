@@ -41,29 +41,19 @@ export default function PaywallModal({ isOpen, onClose }: PaywallModalProps) {
 
       const data = await res.json();
 
-      if (res.status === 401 && data.error === 'AUTH_REQUIRED') {
-        // If guest, activate local VIP flag immediately so they can keep testing
-        const VALID_PROMO_CODES = ['VIP2026', 'PROTEST', 'NUTRIFRIEND', 'BETA2026', 'ARTECH'];
-        if (VALID_PROMO_CODES.includes(promoCode.trim().toUpperCase())) {
-          localStorage.setItem('nutrisnap_guest_is_pro', 'true');
-          setPromoSuccess('🎉 VIP Tester mode activated! Unlimited scans unlocked.');
-          setTimeout(() => {
-            onClose();
-            window.location.reload();
-          }, 1200);
-          return;
-        }
-      }
-
       if (!res.ok) {
         throw new Error(data.error || 'Failed to activate VIP code.');
       }
+
+      localStorage.setItem('nutrisnap_guest_is_pro', 'true');
+      localStorage.setItem('nutrisnap_pro', 'true');
+      window.dispatchEvent(new CustomEvent('nutrisnap_pro_updated', { detail: { is_pro: true } }));
 
       setPromoSuccess('🎉 NutriSnap Pro activated! Enjoy unlimited scans.');
       setTimeout(() => {
         onClose();
         window.location.reload();
-      }, 1200);
+      }, 600);
     } catch (err: any) {
       console.error(err);
       setError(err?.message || 'Error redeeming code.');

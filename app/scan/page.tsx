@@ -103,6 +103,11 @@ export default function ScanPage() {
     setIsAnalyzing(true);
     setErrorMessage(null);
 
+    const isPro =
+      typeof window !== 'undefined' &&
+      (localStorage.getItem('nutrisnap_guest_is_pro') === 'true' ||
+        localStorage.getItem('nutrisnap_pro') === 'true');
+
     try {
       const response = await fetch('/api/analyze-food', {
         method: 'POST',
@@ -110,6 +115,7 @@ export default function ScanPage() {
         body: JSON.stringify({
           image: imagePreview,
           mimeType: imageMime,
+          isPro,
         }),
       });
 
@@ -139,6 +145,11 @@ export default function ScanPage() {
     setIsRecalculating(true);
     setErrorMessage(null);
 
+    const isPro =
+      typeof window !== 'undefined' &&
+      (localStorage.getItem('nutrisnap_guest_is_pro') === 'true' ||
+        localStorage.getItem('nutrisnap_pro') === 'true');
+
     try {
       const response = await fetch('/api/analyze-food', {
         method: 'POST',
@@ -148,6 +159,7 @@ export default function ScanPage() {
           mimeType: imageMime,
           correction: correctionText.trim(),
           isCorrection: true,
+          isPro,
         }),
       });
 

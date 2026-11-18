@@ -34,40 +34,39 @@ export async function POST(req: NextRequest) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
-    if (!user) {
-      return NextResponse.json(
-        {
-          error: 'AUTH_REQUIRED',
-          message: 'Please sign in or create an account first so your VIP Pro membership is linked permanently.',
-        },
-        { status: 401 }
-      );
+    if (user) {
+      const adminSupabase = createAdminClient();
+      // Activate Pro permanently for this user in Supabase
+      const { error: dbError } = await adminSupabase
+        .from('profiles')
+        .upsert({
+          id: user.id,
+          email: user.email,
+          is_pro: true,
+          updated_at: new Date().toISOString(),
+        });
+
+      if (dbError) {
+        console.error('Error activating VIP code in DB:', dbError);
+      }
     }
 
-    const adminSupabase = createAdminClient();
-
-    // Activate Pro for this user in Supabase
-    const { error: dbError } = await adminSupabase
-      .from('profiles')
-      .upsert({
-        id: user.id,
-        email: user.email,
-        is_pro: true,
-        updated_at: new Date().toISOString(),
-      });
-
-    if (dbError) {
-      console.error('Error activating VIP code:', dbError);
-      return NextResponse.json(
-        { error: 'Database update failed. Please try again.' },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
+      is_pro: true,
+      code: cleanCode,
       message: '🎉 NutriSnap Pro VIP Membership activated! Enjoy unlimited AI scans.',
     });
+
+    // Set a long-lived cookie so server API and SSR routes immediately know this client is Pro
+    response.cookies.set('nutrisnap_pro_vip', cleanCode, {
+      path: '/',
+      maxAge: 60 * 60 * 24 * 365, // 1 year
+      httpOnly: false,
+      sameSite: 'lax',
+    });
+
+    return response;
   } catch (err: any) {
     console.error('Redeem code error:', err);
     return NextResponse.json(

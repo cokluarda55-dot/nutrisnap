@@ -24,6 +24,11 @@ export default function HomePage() {
       setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
 
+      const isVip =
+        typeof window !== 'undefined' &&
+        (localStorage.getItem('nutrisnap_guest_is_pro') === 'true' ||
+          localStorage.getItem('nutrisnap_pro') === 'true');
+
       if (user) {
         // Fetch profile
         const { data: prof } = await supabase
@@ -33,7 +38,21 @@ export default function HomePage() {
           .single();
 
         if (prof) {
-          setProfile(prof);
+          setProfile({
+            ...prof,
+            is_pro: prof.is_pro || isVip,
+          });
+        } else {
+          setProfile({
+            id: user.id,
+            email: user.email || null,
+            daily_calorie_target: 2000,
+            daily_protein_target: 140,
+            daily_carbs_target: 220,
+            daily_fat_target: 65,
+            analyses_count: 0,
+            is_pro: isVip,
+          });
         }
 
         // Fetch today's meals
@@ -70,7 +89,7 @@ export default function HomePage() {
           daily_carbs_target: storedGoals.carbs,
           daily_fat_target: storedGoals.fat,
           analyses_count: localCount,
-          is_pro: false,
+          is_pro: isVip,
         });
       }
     } catch (err) {
@@ -99,9 +118,16 @@ export default function HomePage() {
       );
     };
 
+    // Listen for Pro status activation
+    const handleProSync = () => {
+      setProfile((prev) => (prev ? { ...prev, is_pro: true } : null));
+    };
+
     window.addEventListener('nutrisnap_goals_updated', handleGoalsSync);
+    window.addEventListener('nutrisnap_pro_updated', handleProSync);
     return () => {
       window.removeEventListener('nutrisnap_goals_updated', handleGoalsSync);
+      window.removeEventListener('nutrisnap_pro_updated', handleProSync);
     };
   }, [loadData]);
 
