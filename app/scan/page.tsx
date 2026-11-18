@@ -160,12 +160,50 @@ export default function ScanPage() {
       setAnalysisResult(data.data);
       setShowCorrectionInput(false);
       setIsConfirmed(true);
+
+      // Teach AI this correction so future scans recognize it accurately
+      fetch('/api/learn-meal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          food_name: data.data.food_name,
+          original_guess: analysisResult?.food_name || null,
+          calories: data.data.calories,
+          protein: data.data.protein,
+          carbs: data.data.carbs,
+          fat: data.data.fat,
+          is_verified: true,
+          was_corrected: true,
+          user_notes: `User corrected from "${analysisResult?.food_name}" to "${correctionText.trim()}".`,
+        }),
+      }).catch(() => {});
     } catch (err: any) {
       console.error(err);
       setErrorMessage(err.message || 'Error updating analysis. Please try again.');
     } finally {
       setIsRecalculating(false);
     }
+  };
+
+  const handleConfirmMeal = () => {
+    setIsConfirmed(true);
+    if (!analysisResult) return;
+    // Record positive feedback in AI memory
+    fetch('/api/learn-meal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        food_name: analysisResult.food_name,
+        original_guess: analysisResult.food_name,
+        calories: analysisResult.calories,
+        protein: analysisResult.protein,
+        carbs: analysisResult.carbs,
+        fat: analysisResult.fat,
+        is_verified: true,
+        was_corrected: false,
+        user_notes: 'User verified meal accuracy as correct.',
+      }),
+    }).catch(() => {});
   };
 
   const handleSaveMeal = async () => {
@@ -213,6 +251,25 @@ export default function ScanPage() {
           'nutrisnap_guest_count',
           (currentGuestCount + 1).toString()
         );
+      }
+
+      // If user calibrated macros manually, teach AI
+      if (isEditingNumbers) {
+        fetch('/api/learn-meal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            food_name: analysisResult.food_name,
+            original_guess: analysisResult.food_name,
+            calories: Number(analysisResult.calories),
+            protein: Number(analysisResult.protein),
+            carbs: Number(analysisResult.carbs),
+            fat: Number(analysisResult.fat),
+            is_verified: true,
+            was_corrected: true,
+            user_notes: 'User manually calibrated nutrition numbers.',
+          }),
+        }).catch(() => {});
       }
 
       // Trigger Confetti effect
@@ -284,7 +341,7 @@ export default function ScanPage() {
               Snap a Photo of Your Food
             </h3>
             <p className="text-xs text-slate-400 max-w-xs mb-6">
-              Gemini AI recognizes items on your plate, estimating portion sizes and macros automatically.
+              NutriAI recognizes items on your plate, estimating portion sizes and macros automatically.
             </p>
 
             {/* Action Buttons */}
@@ -356,7 +413,7 @@ export default function ScanPage() {
                 {isAnalyzing ? (
                   <>
                     <RefreshCw className="w-5 h-5 animate-spin" />
-                    <span>Gemini AI is Analyzing...</span>
+                    <span>NutriAI is Analyzing...</span>
                   </>
                 ) : (
                   <>
@@ -494,7 +551,7 @@ export default function ScanPage() {
                     <div className="grid grid-cols-3 gap-2">
                       <button
                         type="button"
-                        onClick={() => setIsConfirmed(true)}
+                        onClick={handleConfirmMeal}
                         className={`py-2 px-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 transition ${
                           isConfirmed
                             ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30'
@@ -549,7 +606,7 @@ export default function ScanPage() {
                       </button>
                     </div>
                     <p className="text-[11px] text-slate-400 leading-tight">
-                      Enter the correct dish name or ingredients. Gemini will recalculate exact calories & macros:
+                      Enter the correct dish name or ingredients. NutriAI will recalculate exact calories & macros:
                     </p>
                     <div className="flex gap-2">
                       <input

@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import { FoodAnalysisResult } from './types';
+import { getLearnedContext } from './learning';
 
 const apiKey = process.env.GEMINI_API_KEY || '';
 const client = new GoogleGenAI({ apiKey });
@@ -49,7 +50,8 @@ async function callGeminiWithTimeout(
   cleanBase64: string,
   mimeType: string,
   timeoutMs: number,
-  userCorrection?: string
+  userCorrection?: string,
+  learnedMemory: string = ''
 ): Promise<string> {
   const timeoutPromise = new Promise<never>((_, reject) => {
     const timer = setTimeout(() => {
@@ -58,9 +60,11 @@ async function callGeminiWithTimeout(
     }, timeoutMs);
   });
 
+  const enrichedSystemPrompt = `${BASE_SYSTEM_PROMPT}${learnedMemory}`;
+
   const promptText = userCorrection
-    ? `${BASE_SYSTEM_PROMPT}\n\nIMPORTANT USER CLARIFICATION: The user specifically clarified that this meal is: "${userCorrection}". Recalculate all portions, ingredients, calories, protein, carbs, and fat based on this exact dish and the visual serving size in the image.`
-    : BASE_SYSTEM_PROMPT;
+    ? `${enrichedSystemPrompt}\n\nIMPORTANT USER CLARIFICATION: The user specifically clarified that this meal is: "${userCorrection}". Recalculate all portions, ingredients, calories, protein, carbs, and fat based on this exact dish and the visual serving size in the image.`
+    : enrichedSystemPrompt;
 
   const apiPromise = client.models
     .generateContent({
@@ -106,6 +110,9 @@ export async function analyzeFoodImage(
   const modelQueue = [PRIMARY_MODEL, ...FALLBACK_MODELS.filter((m) => m !== PRIMARY_MODEL)];
   let lastError: any = null;
 
+  // Retrieve user-verified learnings and corrections dynamically
+  const learnedMemory = await getLearnedContext().catch(() => '');
+
   for (let modelIndex = 0; modelIndex < modelQueue.length; modelIndex++) {
     const currentModel = modelQueue[modelIndex];
     const isPrimary = modelIndex === 0;
@@ -114,14 +121,15 @@ export async function analyzeFoodImage(
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log(`[Gemini AI] Trying model: ${currentModel} (Attempt ${attempt}/${maxRetries}, Timeout ${timeoutLimit}ms, Correction: ${userCorrection ? 'YES' : 'NO'})`);
+        console.log(`[NutriAI] Trying model: ${currentModel} (Attempt ${attempt}/${maxRetries}, Timeout ${timeoutLimit}ms, Correction: ${userCorrection ? 'YES' : 'NO'})`);
 
         const responseText = await callGeminiWithTimeout(
           currentModel,
           cleanBase64,
           mimeType,
           timeoutLimit,
-          userCorrection
+          userCorrection,
+          learnedMemory
         );
 
         if (!responseText) {

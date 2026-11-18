@@ -19,7 +19,7 @@ export default function PaywallModal({ isOpen, onClose }: PaywallModalProps) {
   if (!isOpen) return null;
 
   const benefits = [
-    'Unlimited Gemini AI food & macro scans',
+    'Unlimited NutriAI food & macro scans',
     'Accurate Protein, Carbs & Fat portion breakdown',
     'Customized daily calorie and macro target tracking',
     'Complete nutrition history and timeline logs',
