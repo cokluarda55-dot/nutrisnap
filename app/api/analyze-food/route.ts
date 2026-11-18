@@ -6,7 +6,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { image, mimeType } = body;
+    const { image, mimeType, correction, isCorrection } = body;
 
     if (!image) {
       return NextResponse.json(
@@ -35,8 +35,8 @@ export async function POST(req: NextRequest) {
         analysesCount = profile.analyses_count;
       }
 
-      // First 3 free, 4th and beyond require Pro subscription
-      if (analysesCount >= 3 && !isPro) {
+      // Check quota only for initial new scans, not when refining/correcting the current dish
+      if (!isCorrection && analysesCount >= 3 && !isPro) {
         return NextResponse.json(
           {
             error: 'PAYWALL_REQUIRED',
@@ -49,11 +49,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. Multimodal AI Analysis with Gemini
-    const analysisResult = await analyzeFoodImage(image, mimeType || 'image/jpeg');
+    // 2. Multimodal AI Analysis with Gemini (with optional user correction hint)
+    const analysisResult = await analyzeFoodImage(
+      image,
+      mimeType || 'image/jpeg',
+      correction || undefined
+    );
 
-    // 3. Increment user analysis counter
-    if (user) {
+    // 3. Increment counter only on fresh new analyses
+    if (user && !isCorrection) {
       await adminSupabase
         .from('profiles')
         .update({

@@ -12,6 +12,9 @@ import {
   Flame,
   Info,
   Layers,
+  ThumbsUp,
+  Edit3,
+  Sliders,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import PaywallModal from '@/components/PaywallModal';
@@ -32,12 +35,23 @@ export default function ScanPage() {
   const [showPaywall, setShowPaywall] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Verification & Correction states
+  const [isConfirmed, setIsConfirmed] = useState(false);
+  const [showCorrectionInput, setShowCorrectionInput] = useState(false);
+  const [correctionText, setCorrectionText] = useState('');
+  const [isRecalculating, setIsRecalculating] = useState(false);
+  const [isEditingNumbers, setIsEditingNumbers] = useState(false);
+
   const supabase = createClient();
 
   // Resize and compress image using HTML5 Canvas (max 800px, 0.72 quality for sub-2s analysis)
   const processImageFile = (file: File) => {
     setErrorMessage(null);
     setAnalysisResult(null);
+    setIsConfirmed(false);
+    setShowCorrectionInput(false);
+    setCorrectionText('');
+    setIsEditingNumbers(false);
 
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -119,6 +133,41 @@ export default function ScanPage() {
     }
   };
 
+  // Recalculate with user's specific food correction
+  const handleCorrectionSubmit = async () => {
+    if (!imagePreview || !correctionText.trim()) return;
+    setIsRecalculating(true);
+    setErrorMessage(null);
+
+    try {
+      const response = await fetch('/api/analyze-food', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image: imagePreview,
+          mimeType: imageMime,
+          correction: correctionText.trim(),
+          isCorrection: true,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to recalculate meal macros.');
+      }
+
+      setAnalysisResult(data.data);
+      setShowCorrectionInput(false);
+      setIsConfirmed(true);
+    } catch (err: any) {
+      console.error(err);
+      setErrorMessage(err.message || 'Error updating analysis. Please try again.');
+    } finally {
+      setIsRecalculating(false);
+    }
+  };
+
   const handleSaveMeal = async () => {
     if (!analysisResult) return;
     setIsSaving(true);
@@ -128,10 +177,10 @@ export default function ScanPage() {
 
       const newMeal = {
         meal_name: analysisResult.food_name,
-        calories: analysisResult.calories,
-        protein: analysisResult.protein,
-        carbs: analysisResult.carbs,
-        fat: analysisResult.fat,
+        calories: Number(analysisResult.calories),
+        protein: Number(analysisResult.protein),
+        carbs: Number(analysisResult.carbs),
+        fat: Number(analysisResult.fat),
         meal_type: selectedMealType,
         notes: analysisResult.health_tip,
         consumed_at: new Date().toISOString(),
@@ -189,6 +238,10 @@ export default function ScanPage() {
     setImagePreview(null);
     setAnalysisResult(null);
     setErrorMessage(null);
+    setIsConfirmed(false);
+    setShowCorrectionInput(false);
+    setCorrectionText('');
+    setIsEditingNumbers(false);
   };
 
   return (
@@ -320,22 +373,47 @@ export default function ScanPage() {
             </div>
           ) : (
             /* Analysis Result Card */
-            <div className="space-y-4 animate-fade-in">
+            <div className="space-y-3.5 animate-fade-in">
               <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-4 shadow-xl">
                 {/* Title & Calories */}
                 <div className="flex items-start justify-between gap-3 mb-3">
-                  <div>
+                  <div className="flex-1">
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400">
                       Identified Meal
                     </span>
-                    <h3 className="text-lg font-bold text-white mt-0.5">
-                      {analysisResult.food_name}
-                    </h3>
+                    {isEditingNumbers ? (
+                      <input
+                        type="text"
+                        value={analysisResult.food_name}
+                        onChange={(e) =>
+                          setAnalysisResult({ ...analysisResult, food_name: e.target.value })
+                        }
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1 text-sm font-bold text-white mt-0.5"
+                      />
+                    ) : (
+                      <h3 className="text-lg font-bold text-white mt-0.5">
+                        {analysisResult.food_name}
+                      </h3>
+                    )}
                   </div>
                   <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl px-3 py-1.5 text-center shrink-0">
                     <div className="flex items-center gap-1 text-emerald-400 font-extrabold text-base">
                       <Flame className="w-4 h-4" />
-                      {analysisResult.calories}
+                      {isEditingNumbers ? (
+                        <input
+                          type="number"
+                          value={analysisResult.calories}
+                          onChange={(e) =>
+                            setAnalysisResult({
+                              ...analysisResult,
+                              calories: Number(e.target.value),
+                            })
+                          }
+                          className="w-16 bg-slate-950 text-center rounded-lg border border-slate-700 py-0.5 text-sm font-extrabold text-emerald-400"
+                        />
+                      ) : (
+                        analysisResult.calories
+                      )}
                     </div>
                     <span className="text-[9px] text-slate-400 font-medium">kcal</span>
                   </div>
@@ -345,23 +423,158 @@ export default function ScanPage() {
                 <div className="grid grid-cols-3 gap-2 py-2 border-y border-slate-800/80 mb-3">
                   <div className="bg-slate-950/60 rounded-xl p-2 text-center">
                     <span className="text-[10px] text-slate-400">Protein</span>
-                    <p className="text-sm font-bold text-blue-400">
-                      {analysisResult.protein}g
-                    </p>
+                    {isEditingNumbers ? (
+                      <input
+                        type="number"
+                        value={analysisResult.protein}
+                        onChange={(e) =>
+                          setAnalysisResult({
+                            ...analysisResult,
+                            protein: Number(e.target.value),
+                          })
+                        }
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg text-xs font-bold text-blue-400 text-center py-1 mt-1"
+                      />
+                    ) : (
+                      <p className="text-sm font-bold text-blue-400">{analysisResult.protein}g</p>
+                    )}
                   </div>
                   <div className="bg-slate-950/60 rounded-xl p-2 text-center">
                     <span className="text-[10px] text-slate-400">Carbs</span>
-                    <p className="text-sm font-bold text-amber-400">
-                      {analysisResult.carbs}g
-                    </p>
+                    {isEditingNumbers ? (
+                      <input
+                        type="number"
+                        value={analysisResult.carbs}
+                        onChange={(e) =>
+                          setAnalysisResult({
+                            ...analysisResult,
+                            carbs: Number(e.target.value),
+                          })
+                        }
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg text-xs font-bold text-amber-400 text-center py-1 mt-1"
+                      />
+                    ) : (
+                      <p className="text-sm font-bold text-amber-400">{analysisResult.carbs}g</p>
+                    )}
                   </div>
                   <div className="bg-slate-950/60 rounded-xl p-2 text-center">
                     <span className="text-[10px] text-slate-400">Fat</span>
-                    <p className="text-sm font-bold text-rose-400">
-                      {analysisResult.fat}g
-                    </p>
+                    {isEditingNumbers ? (
+                      <input
+                        type="number"
+                        value={analysisResult.fat}
+                        onChange={(e) =>
+                          setAnalysisResult({
+                            ...analysisResult,
+                            fat: Number(e.target.value),
+                          })
+                        }
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg text-xs font-bold text-rose-400 text-center py-1 mt-1"
+                      />
+                    ) : (
+                      <p className="text-sm font-bold text-rose-400">{analysisResult.fat}g</p>
+                    )}
                   </div>
                 </div>
+
+                {/* Accuracy Feedback Check: "Did we get this right?" */}
+                {!showCorrectionInput && (
+                  <div className="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-2.5 flex items-center justify-between gap-2 mb-3">
+                    <span className="text-xs text-slate-300 font-medium flex items-center gap-1.5">
+                      {isConfirmed ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-emerald-400 font-semibold">Meal verified</span>
+                        </>
+                      ) : (
+                        'Did we get this right?'
+                      )}
+                    </span>
+                    <div className="flex gap-1.5">
+                      {!isConfirmed && (
+                        <button
+                          type="button"
+                          onClick={() => setIsConfirmed(true)}
+                          className="px-2.5 py-1.5 rounded-xl bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 text-xs font-semibold flex items-center gap-1 transition"
+                        >
+                          <ThumbsUp className="w-3.5 h-3.5" />
+                          <span>Yes</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowCorrectionInput(true);
+                          setCorrectionText(analysisResult.food_name);
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium flex items-center gap-1 transition"
+                      >
+                        <Edit3 className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Not quite</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingNumbers(!isEditingNumbers)}
+                        className={`p-1.5 rounded-xl border text-xs transition ${
+                          isEditingNumbers
+                            ? 'bg-blue-500/20 border-blue-500/50 text-blue-400'
+                            : 'bg-slate-800 border-slate-700 text-slate-400'
+                        }`}
+                        title="Edit numbers directly"
+                      >
+                        <Sliders className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* User Correction Input Drawer */}
+                {showCorrectionInput && (
+                  <div className="bg-slate-950 border border-amber-500/40 rounded-2xl p-3 mb-3 space-y-2 animate-fade-in">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5" />
+                        Tell AI what this meal is:
+                      </span>
+                      <button
+                        onClick={() => setShowCorrectionInput(false)}
+                        className="text-[11px] text-slate-400 hover:text-white"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-tight">
+                      Enter the dish name or ingredients. Gemini will recalculate exact macros:
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="e.g. Lentil soup with pita bread"
+                        value={correctionText}
+                        onChange={(e) => setCorrectionText(e.target.value)}
+                        className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-amber-400"
+                        autoFocus
+                      />
+                      <button
+                        onClick={handleCorrectionSubmit}
+                        disabled={isRecalculating || !correctionText.trim()}
+                        className="px-3.5 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold text-xs rounded-xl shadow-md disabled:opacity-50 flex items-center gap-1 shrink-0"
+                      >
+                        {isRecalculating ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>Updating...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-3.5 h-3.5" />
+                            <span>Recalculate</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Ingredients Breakdown */}
                 {analysisResult.breakdown?.length > 0 && (

@@ -8,7 +8,7 @@ const client = new GoogleGenAI({ apiKey });
 const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 const FALLBACK_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.8-flash'];
 
-const SYSTEM_PROMPT = `You are a certified clinical nutritionist and AI dietary expert.
+const BASE_SYSTEM_PROMPT = `You are a certified clinical nutritionist and AI dietary expert.
 Your task is to analyze the provided meal photo and accurately estimate its total calories, macronutrients (protein, carbs, fat), and individual food item breakdowns.
 Output ONLY a valid JSON object matching the exact schema below. Do not wrap in extra markdown or introductory conversational text.
 
@@ -48,7 +48,8 @@ async function callGeminiWithTimeout(
   model: string,
   cleanBase64: string,
   mimeType: string,
-  timeoutMs: number
+  timeoutMs: number,
+  userCorrection?: string
 ): Promise<string> {
   const timeoutPromise = new Promise<never>((_, reject) => {
     const timer = setTimeout(() => {
@@ -56,6 +57,10 @@ async function callGeminiWithTimeout(
       reject(new Error(`TIMEOUT_${timeoutMs}MS`));
     }, timeoutMs);
   });
+
+  const promptText = userCorrection
+    ? `${BASE_SYSTEM_PROMPT}\n\nIMPORTANT USER CLARIFICATION: The user specifically clarified that this meal is: "${userCorrection}". Recalculate all portions, ingredients, calories, protein, carbs, and fat based on this exact dish and the visual serving size in the image.`
+    : BASE_SYSTEM_PROMPT;
 
   const apiPromise = client.models
     .generateContent({
@@ -71,7 +76,7 @@ async function callGeminiWithTimeout(
               },
             },
             {
-              text: SYSTEM_PROMPT,
+              text: promptText,
             },
           ],
         },
@@ -86,11 +91,12 @@ async function callGeminiWithTimeout(
 }
 
 /**
- * Executes food analysis with fast retry and automatic fallback to Flash-Lite
+ * Executes food analysis with fast retry, user corrections, and automatic fallback to Flash-Lite
  */
 export async function analyzeFoodImage(
   base64Image: string,
-  mimeType: string = 'image/jpeg'
+  mimeType: string = 'image/jpeg',
+  userCorrection?: string
 ): Promise<FoodAnalysisResult> {
   // Strip base64 prefix if present
   const cleanBase64 = base64Image.includes(';base64,')
@@ -108,13 +114,14 @@ export async function analyzeFoodImage(
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log(`[Gemini AI] Trying model: ${currentModel} (Attempt ${attempt}/${maxRetries}, Timeout ${timeoutLimit}ms)`);
+        console.log(`[Gemini AI] Trying model: ${currentModel} (Attempt ${attempt}/${maxRetries}, Timeout ${timeoutLimit}ms, Correction: ${userCorrection ? 'YES' : 'NO'})`);
 
         const responseText = await callGeminiWithTimeout(
           currentModel,
           cleanBase64,
           mimeType,
-          timeoutLimit
+          timeoutLimit,
+          userCorrection
         );
 
         if (!responseText) {
@@ -130,12 +137,12 @@ export async function analyzeFoodImage(
         const parsed: FoodAnalysisResult = JSON.parse(cleanedJson);
 
         return {
-          food_name: parsed.food_name || 'Healthy Meal',
+          food_name: parsed.food_name || (userCorrection ? userCorrection : 'Healthy Meal'),
           calories: Math.round(Number(parsed.calories) || 0),
           protein: Math.round((Number(parsed.protein) || 0) * 10) / 10,
           carbs: Math.round((Number(parsed.carbs) || 0) * 10) / 10,
           fat: Math.round((Number(parsed.fat) || 0) * 10) / 10,
-          confidence_score: parsed.confidence_score || 0.9,
+          confidence_score: parsed.confidence_score || 0.95,
           breakdown: Array.isArray(parsed.breakdown) ? parsed.breakdown : [],
           health_tip: parsed.health_tip || 'Keep up the balanced nutrition!',
         };
