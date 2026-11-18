@@ -1,0 +1,84 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { analyzeFoodImage } from '@/lib/gemini';
+import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { image, mimeType } = body;
+
+    if (!image) {
+      return NextResponse.json(
+        { error: 'Please upload or snap a photo to analyze.' },
+        { status: 400 }
+      );
+    }
+
+    // 1. Supabase User & Quota Verification
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    let isPro = false;
+    let analysesCount = 0;
+    const adminSupabase = createAdminClient();
+
+    if (user) {
+      const { data: profile } = await adminSupabase
+        .from('profiles')
+        .select('analyses_count, is_pro')
+        .eq('id', user.id)
+        .single();
+
+      if (profile) {
+        isPro = profile.is_pro;
+        analysesCount = profile.analyses_count;
+      }
+
+      // First 3 free, 4th and beyond require Pro subscription
+      if (analysesCount >= 3 && !isPro) {
+        return NextResponse.json(
+          {
+            error: 'PAYWALL_REQUIRED',
+            message: 'You have completed your 3 free meal scans. Upgrade to NutriSnap Pro for unlimited AI scans.',
+            analyses_count: analysesCount,
+            is_pro: false,
+          },
+          { status: 403 }
+        );
+      }
+    }
+
+    // 2. Multimodal AI Analysis with Gemini
+    const analysisResult = await analyzeFoodImage(image, mimeType || 'image/jpeg');
+
+    // 3. Increment user analysis counter
+    if (user) {
+      await adminSupabase
+        .from('profiles')
+        .update({
+          analyses_count: analysesCount + 1,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id);
+
+      analysesCount += 1;
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: analysisResult,
+      usage: {
+        analyses_count: analysesCount,
+        is_pro: isPro,
+        remaining_free: isPro ? 'unlimited' : Math.max(0, 3 - analysesCount),
+      },
+    });
+  } catch (error: any) {
+    console.error('Meal analysis API error:', error);
+    return NextResponse.json(
+      { error: error?.message || 'Failed to analyze meal photo.' },
+      { status: 500 }
+    );
+  }
+}

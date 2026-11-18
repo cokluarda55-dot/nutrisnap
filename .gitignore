@@ -1,0 +1,49 @@
+# Dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# Testing
+/coverage
+
+# Next.js
+/.next/
+/out/
+
+# Production
+/build
+
+# Environment variables
+.env*.local
+.env
+!.env.example
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Operating System
+.DS_Store
+*.pem
+Thumbs.db
+
+# Python & Temporary media from previous tasks
+.agent/
+emkkalip-site/
+generate_short.py
+upload_youtube.py
+youtube_token.json
+.venv/
+__pycache__/
+*.mp4
+*.mp3
+sellbird/
+temp_shorts/
+music/
+*.token.json
+client_secrets.json
+upload_history.json
+short_metadata.json
