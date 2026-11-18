@@ -1,8 +1,10 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import BottomNav from '@/components/BottomNav';
+import InstallPrompt from '@/components/InstallPrompt';
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://nutrisnap.vercel.app'),
   title: 'NutriSnap - AI Calorie & Macro Tracker',
   description: 'Snap your meal to instantly track calories, protein, carbs, and fats powered by Gemini AI.',
   manifest: '/manifest.json',
@@ -14,6 +16,27 @@ export const metadata: Metadata = {
   icons: {
     icon: '/icons/icon-192.png',
     apple: '/icons/icon-192.png',
+  },
+  openGraph: {
+    title: 'NutriSnap - AI Calorie & Macro Tracker',
+    description: 'Snap your food to instantly get calories, protein, carbs, and fats in under 2 seconds.',
+    url: 'https://nutrisnap.vercel.app',
+    siteName: 'NutriSnap AI',
+    images: [
+      {
+        url: '/og-image.png',
+        width: 1200,
+        height: 630,
+        alt: 'NutriSnap AI Calorie & Macro Tracker',
+      },
+    ],
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'NutriSnap - AI Calorie & Macro Tracker',
+    description: 'Instant calorie and macro recognition from photos powered by Gemini AI.',
+    images: ['/og-image.png'],
   },
 };
 
@@ -36,6 +59,7 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
       </head>
       <body className="min-h-screen bg-slate-950 text-slate-100 antialiased selection:bg-emerald-500 selection:text-white">
+        <InstallPrompt />
         <main className="max-w-md mx-auto min-h-screen flex flex-col pb-24 shadow-2xl bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 border-x border-slate-900/50">
           {children}
         </main>
