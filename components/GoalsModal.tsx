@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Target, Check, Sliders, Flame } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
+import { X, Check, Sliders, Flame } from 'lucide-react';
 
 interface GoalsModalProps {
   isOpen: boolean;
@@ -33,8 +32,7 @@ export default function GoalsModal({
   const [fatTarget, setFatTarget] = useState(currentGoals.fat || 65);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
-
-  const supabase = createClient();
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -43,6 +41,7 @@ export default function GoalsModal({
       setCarbsTarget(currentGoals.carbs || 220);
       setFatTarget(currentGoals.fat || 65);
       setSuccess(false);
+      setError(null);
     }
   }, [isOpen, currentGoals]);
 
@@ -51,33 +50,33 @@ export default function GoalsModal({
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setError(null);
 
     const newGoals = {
-      calories: Number(calorieTarget),
-      protein: Number(proteinTarget),
-      carbs: Number(carbsTarget),
-      fat: Number(fatTarget),
+      calories: Number(calorieTarget) || 2000,
+      protein: Number(proteinTarget) || 140,
+      carbs: Number(carbsTarget) || 220,
+      fat: Number(fatTarget) || 65,
     };
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      // 1. Store in localStorage as instant client backup
+      localStorage.setItem('nutrisnap_guest_goals', JSON.stringify(newGoals));
+      localStorage.setItem('nutrisnap_goals', JSON.stringify(newGoals));
 
-      if (user) {
-        await supabase
-          .from('profiles')
-          .update({
-            daily_calorie_target: newGoals.calories,
-            daily_protein_target: newGoals.protein,
-            daily_carbs_target: newGoals.carbs,
-            daily_fat_target: newGoals.fat,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', user.id);
-      } else {
-        localStorage.setItem('nutrisnap_guest_goals', JSON.stringify(newGoals));
+      // 2. Persist to Supabase database via resilient server API
+      const res = await fetch('/api/goals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newGoals),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        console.warn('Goals API warning:', errData);
       }
 
-      // Notify parent & global event
+      // 3. Notify parent component & broadcast to all pages
       if (onGoalsUpdated) {
         onGoalsUpdated(newGoals);
       }
@@ -87,8 +86,9 @@ export default function GoalsModal({
       setTimeout(() => {
         onClose();
       }, 500);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to update nutrition targets:', err);
+      setError(err?.message || 'Error saving goals. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -98,6 +98,7 @@ export default function GoalsModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
       <div className="relative w-full max-w-sm bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-700/80 rounded-3xl p-5 shadow-2xl">
         <button
+          type="button"
           onClick={onClose}
           className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-full bg-slate-800/60 hover:bg-slate-800 transition"
         >
@@ -114,30 +115,45 @@ export default function GoalsModal({
           </div>
         </div>
 
+        {error && (
+          <div className="mt-3 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+            {error}
+          </div>
+        )}
+
         <form onSubmit={handleSave} className="space-y-4 mt-4">
           {/* Calorie Goal */}
           <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-3">
-            <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                 <Flame className="w-4 h-4 text-emerald-400" />
                 Daily Calories (kcal)
               </label>
-              <span className="text-sm font-extrabold text-emerald-400">
-                {calorieTarget} kcal
-              </span>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min="800"
+                  max="8000"
+                  step="25"
+                  value={calorieTarget}
+                  onChange={(e) => setCalorieTarget(Number(e.target.value))}
+                  className="w-20 bg-slate-900 border border-slate-700 rounded-lg px-2 py-0.5 text-xs text-white text-center font-bold text-emerald-400 focus:outline-none focus:border-emerald-500"
+                />
+                <span className="text-[10px] text-slate-400 font-semibold">kcal</span>
+              </div>
             </div>
             <input
               type="range"
-              min="1200"
-              max="4500"
+              min="1000"
+              max="5000"
               step="50"
               value={calorieTarget}
               onChange={(e) => setCalorieTarget(Number(e.target.value))}
               className="w-full accent-emerald-500 cursor-pointer"
             />
             <div className="flex justify-between text-[10px] text-slate-500 mt-1">
-              <span>1200 kcal</span>
-              <span>4500 kcal</span>
+              <span>1000 kcal</span>
+              <span>5000 kcal</span>
             </div>
           </div>
 
@@ -150,8 +166,8 @@ export default function GoalsModal({
               </label>
               <input
                 type="number"
-                min="30"
-                max="400"
+                min="20"
+                max="500"
                 value={proteinTarget}
                 onChange={(e) => setProteinTarget(Number(e.target.value))}
                 className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white text-center font-bold focus:outline-none focus:border-blue-500"
@@ -165,8 +181,8 @@ export default function GoalsModal({
               </label>
               <input
                 type="number"
-                min="20"
-                max="600"
+                min="10"
+                max="700"
                 value={carbsTarget}
                 onChange={(e) => setCarbsTarget(Number(e.target.value))}
                 className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white text-center font-bold focus:outline-none focus:border-amber-500"
@@ -180,8 +196,8 @@ export default function GoalsModal({
               </label>
               <input
                 type="number"
-                min="15"
-                max="250"
+                min="10"
+                max="300"
                 value={fatTarget}
                 onChange={(e) => setFatTarget(Number(e.target.value))}
                 className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white text-center font-bold focus:outline-none focus:border-rose-500"
@@ -193,12 +209,12 @@ export default function GoalsModal({
           <button
             type="submit"
             disabled={saving}
-            className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-500/25 active:scale-[0.98] transition-all"
+            className="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-500/25 active:scale-[0.98] transition-all cursor-pointer"
           >
             {success ? (
               <>
                 <Check className="w-4 h-4" />
-                <span>Saved!</span>
+                <span>Goals Saved!</span>
               </>
             ) : saving ? (
               <span>Saving...</span>

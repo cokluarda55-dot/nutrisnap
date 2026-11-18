@@ -103,22 +103,14 @@ export default function ProfilePage() {
     };
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      localStorage.setItem('nutrisnap_guest_goals', JSON.stringify(newGoals));
+      localStorage.setItem('nutrisnap_goals', JSON.stringify(newGoals));
 
-      if (user) {
-        await supabase
-          .from('profiles')
-          .update({
-            daily_calorie_target: newGoals.calories,
-            daily_protein_target: newGoals.protein,
-            daily_carbs_target: newGoals.carbs,
-            daily_fat_target: newGoals.fat,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', user.id);
-      } else {
-        localStorage.setItem('nutrisnap_guest_goals', JSON.stringify(newGoals));
-      }
+      await fetch('/api/goals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newGoals),
+      });
 
       window.dispatchEvent(new CustomEvent('nutrisnap_goals_updated', { detail: newGoals }));
       setMessage('Nutrition goals updated successfully!');
